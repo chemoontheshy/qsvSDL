@@ -19,5 +19,6 @@ using namespace std;
 
 int main()
 {
+	cout << "test git" << endl;
 	cout << avcodec_configuration() << endl;
 }
