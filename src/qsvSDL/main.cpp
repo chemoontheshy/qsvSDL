@@ -23,6 +23,10 @@ extern "C"
 
 using namespace std;
 
+//硬解码相关
+static AVBufferRef* hw_device_ctx = nullptr;
+static enum AVPixelFormat hw_pix_fmt;
+
 void initlib()
 {
 	mutex m_mutex;
@@ -32,7 +36,6 @@ void initlib()
 	auto version = avcodec_version();
 	cout << "init ffmpeg lib ok." << "version:" << version<<endl;
 }
-
 
 
 int main(int argc, char** argv)
@@ -88,8 +91,7 @@ int main(int argc, char** argv)
 	//视频解码
 	AVCodec *videoDecoder = nullptr;
 
-	//硬解码相关
-	static AVBufferRef* hw_device_ctx = nullptr;
+	
 
 	//打开码流前指定各种参数比如：探测时间/超时时间/最大延时等
 	//设置缓存大小，1080p可以将值调大
@@ -110,6 +112,7 @@ int main(int argc, char** argv)
 	//封装格式上下文
 	pFormatCtx = avformat_alloc_context();
 
+    //打开视频流
 	int ret = avformat_open_input(&pFormatCtx, input, nullptr, nullptr);
 	if (ret < 0) {
 		cout << "open input error." << endl;
@@ -136,28 +139,27 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
+
 	//获取视频流
 	AVStream* videoStream = pFormatCtx->streams[videoStreamIndex];
-
-	//open the hardware device
-	//ret = av_hwdevice_ctx_create(videoDecoder, );
 
 	//获取视频流解码器或者指定解码器
 	videoCodec = avcodec_alloc_context3(nullptr);
 	avcodec_parameters_to_context(videoCodec, videoStream->codecpar);
 
-	//videoDecoder = avcodec_find_decoder(videoCodec->codec_id);
-	videoDecoder = avcodec_find_decoder_by_name("h264_qsv");
+	videoDecoder = avcodec_find_decoder(videoCodec->codec_id);
+	//videoDecoder = avcodec_find_decoder_by_name("h264_qsv");
 	if (videoDecoder == nullptr) {
 		cout << "video decoder not fond." << endl;
 		return 0;
 	}
+	
 
 	//设置加速解码
 	videoCodec->lowres = videoDecoder->max_lowres;
 	videoCodec->flags2 |= AV_CODEC_FLAG2_FAST;
 
-	videoCodec->get_format = videoDecoder; b
+	//videoCodec->get_format = videoDecoder; b
 
 	//打开解码器
 	ret = avcodec_open2(videoCodec, videoDecoder, nullptr);
