@@ -7,6 +7,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "qsvSDL", "qsvSDL\qsvSDL.vcx
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "qsv", "qsv\qsv.vcxproj", "{4A87CA2F-3345-4654-927A-6BE395CE364B}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test", "test\test.vcxproj", "{AC52CA09-4EAB-4923-B6ED-8A0AC36F1216}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -31,6 +33,14 @@ Global
 		{4A87CA2F-3345-4654-927A-6BE395CE364B}.Release|x64.Build.0 = Release|x64
 		{4A87CA2F-3345-4654-927A-6BE395CE364B}.Release|x86.ActiveCfg = Release|Win32
 		{4A87CA2F-3345-4654-927A-6BE395CE364B}.Release|x86.Build.0 = Release|Win32
+		{AC52CA09-4EAB-4923-B6ED-8A0AC36F1216}.Debug|x64.ActiveCfg = Debug|x64
+		{AC52CA09-4EAB-4923-B6ED-8A0AC36F1216}.Debug|x64.Build.0 = Debug|x64
+		{AC52CA09-4EAB-4923-B6ED-8A0AC36F1216}.Debug|x86.ActiveCfg = Debug|Win32
+		{AC52CA09-4EAB-4923-B6ED-8A0AC36F1216}.Debug|x86.Build.0 = Debug|Win32
+		{AC52CA09-4EAB-4923-B6ED-8A0AC36F1216}.Release|x64.ActiveCfg = Release|x64
+		{AC52CA09-4EAB-4923-B6ED-8A0AC36F1216}.Release|x64.Build.0 = Release|x64
+		{AC52CA09-4EAB-4923-B6ED-8A0AC36F1216}.Release|x86.ActiveCfg = Release|Win32
+		{AC52CA09-4EAB-4923-B6ED-8A0AC36F1216}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

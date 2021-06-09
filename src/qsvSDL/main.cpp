@@ -19,7 +19,7 @@ extern "C"
 
 #include<iostream>
 #include<mutex>
-
+#include<time.h>
 
 using namespace std;
 
@@ -40,6 +40,8 @@ void initlib()
 
 int main(int argc, char** argv)
 {
+	clock_t start, finish;
+	start = clock();
 	//SDL
 	SDL_Rect rect;
 	Uint32 pixformat;
@@ -219,10 +221,8 @@ int main(int argc, char** argv)
 		SDL_TEXTUREACCESS_STREAMING,
 		w_width, w_height);
 
-	//分配内存
+	//计数
 	int num = 0;
-	//
-	AVFrame sw_Frame;
 	while (av_read_frame(pFormatCtx, packet) >= 0) {
 		int index = packet->stream_index;
 		if (index == videoStreamIndex) {
@@ -251,7 +251,6 @@ int main(int argc, char** argv)
 				SDL_RenderCopy(renderer, texture, nullptr, &rect);
 				SDL_RenderPresent(renderer);
 				SDL_Delay(40);
-				cout << "pFrame->format: "<<pFrame->format << endl;
 			}
 		}
 		av_packet_unref(packet);
@@ -301,5 +300,8 @@ int main(int argc, char** argv)
 	if (texture) {
 		SDL_DestroyTexture(texture);
 	}
+	finish = clock();
+	//clock()函数返回此时CPU时钟计时单元数
+	cout << endl << "the time cost is:" << double(finish - start) / CLOCKS_PER_SEC << endl;
 	return 0;
 }
