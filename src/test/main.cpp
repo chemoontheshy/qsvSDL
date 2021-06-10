@@ -128,7 +128,7 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Cannot find input stream information.\n");
         return -1;
     }
-
+    cout << "test" << endl;
     // 循环出视频流
     ret = av_find_best_stream(input_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &decoder, 0);
     if (ret < 0) {
@@ -214,8 +214,8 @@ int main(int argc, char* argv[])
     av_image_fill_arrays(oFrame->data, oFrame->linesize, out_bufffer, AV_PIX_FMT_YUV420P, w_width, w_height, 1);
     //图像转换
     //处理图片数据对象
-    SwsContext *img_convert_ctx = nullptr;
-    img_convert_ctx = sws_getContext(w_width, w_height, AV_PIX_FMT_D3D11VA_VLD, w_width, w_height, AV_PIX_FMT_YUV420P, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+    //SwsContext *img_convert_ctx = nullptr;
+    //img_convert_ctx = sws_getContext(w_width, w_height, AV_PIX_FMT_D3D11VA_VLD, w_width, w_height, AV_PIX_FMT_YUV420P, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
 
     int num = 0;
     while (av_read_frame(input_ctx, packet) >= 0) {
@@ -235,7 +235,7 @@ int main(int argc, char* argv[])
                 printf("finish decode %d frame\n", num);
                 if (iFrame->format == hw_pix_fmt) {
                     /*data from GPU*/
-                    sws_scale(img_convert_ctx, (const uint8_t *const *)iFrame->data, iFrame->linesize, 0, w_height, oFrame->data, oFrame->linesize);
+                    //sws_scale(img_convert_ctx, (const uint8_t *const *)iFrame->data, iFrame->linesize, 0, w_height, oFrame->data, oFrame->linesize);
                     //SDL_UpdateYUVTexture(texture, nullptr,
                     //    oFrame->data[0], oFrame->linesize[0],
                     //    oFrame->data[1], oFrame->linesize[1],

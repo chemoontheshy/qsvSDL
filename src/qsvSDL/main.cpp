@@ -149,8 +149,8 @@ int main(int argc, char** argv)
 	videoCodec = avcodec_alloc_context3(nullptr);
 	avcodec_parameters_to_context(videoCodec, videoStream->codecpar);
 
-	videoDecoder = avcodec_find_decoder(videoCodec->codec_id);
-	//videoDecoder = avcodec_find_decoder_by_name("h264_qsv");
+	//videoDecoder = avcodec_find_decoder(videoCodec->codec_id);
+	videoDecoder = avcodec_find_decoder_by_name("h264_qsv");
 	if (videoDecoder == nullptr) {
 		cout << "video decoder not fond." << endl;
 		return 0;
@@ -214,14 +214,18 @@ int main(int argc, char** argv)
 	}
 
 	//SDL格式yuv
+	
 	pixformat = SDL_PIXELFORMAT_IYUV;
+	//pixformat = SDL_PIXELFORMAT_NV12;
 	//创建纹理
 	texture = SDL_CreateTexture(renderer,
 		pixformat,
 		SDL_TEXTUREACCESS_STREAMING,
 		w_width, w_height);
-
 	//计数
+
+	AVFrame *oFrame = nullptr;
+
 	int num = 0;
 	while (av_read_frame(pFormatCtx, packet) >= 0) {
 		int index = packet->stream_index;
@@ -236,7 +240,14 @@ int main(int argc, char** argv)
 			}
 			if (frameFinish >= 0) {
 				num++;
+				cout << pFrame->format<<endl;
 				printf("finish decode %d frame\n", num);
+				ret = av_hwframe_transfer_data(oFrame, pFrame, 0);
+				if (ret < 0) {
+					fprintf(stderr, "Error transferring the data to system memory\n");
+					return 0;
+				}
+				//SDL_UpdateTexture(texture, nullptr, pFrame->data[0], pFrame->linesize[0]);
 				SDL_UpdateYUVTexture(texture, nullptr,
 					pFrame->data[0],pFrame->linesize[0],
 					pFrame->data[1],pFrame->linesize[1],
