@@ -20,6 +20,8 @@ typedef struct DecodeContext {
 }DecodeContext;
 
 
+
+
 int main(int argc, char* argv[])
 {
     //总上下文
@@ -33,6 +35,8 @@ int main(int argc, char* argv[])
     DecodeContext decode = {nullptr};
 
     AVBufferRef* te = nullptr;
+
+    AVPacket* packet;
 
     int ret, i;
     //视频流
@@ -60,12 +64,78 @@ int main(int argc, char* argv[])
         return 0;
     }
    
-    
-    ret = av_hwdevice_ctx_create(&decode.hw_device_ref, AV_HWDEVICE_TYPE_QSV, "auto", nullptr, 0);
-    if (ret < 0) {
-        cout << "cannot open the hardware dvice" << endl;
+    //
+    ////打开硬件设备
+    //ret = av_hwdevice_ctx_create(&decode.hw_device_ref, AV_HWDEVICE_TYPE_QSV,nullptr, nullptr, 0);
+    //if (ret < 0) {
+    //    cout << "cannot open the hardware dvice" << endl;
+    //    return 0;
+    //}
+
+    //初始化解码器
+    decoder = avcodec_find_decoder_by_name("h264_qsv");
+    if (!decoder) {
+        cout << "The QSV decoder is not present in libavcodec" << endl;
         return 0;
     }
+
+    decoder_ctx = avcodec_alloc_context3(decoder);
+    if (!decoder_ctx) {
+        cout << AVERROR(ENOMEM) << endl;
+    }
+    decoder_ctx->codec_id = AV_CODEC_ID_H264;
+
+    decoder_ctx->opaque=&decode;
+    //decoder_ctx->get_format = AV_HWDEVICE_TYPE_QSV;
+
+    //
+    ret = avcodec_open2(decoder_ctx, nullptr, nullptr);
+    if (ret < 0) {
+        cout << "Error open the decoder"<<endl;
+    }
+
+    AVFrame* frame = av_frame_alloc();
+    AVFrame* sw_frame = av_frame_alloc();
+    packet = av_packet_alloc();
+    //开始解码
+    int frameFinish = 0;
+    int num = 0;
+    while (av_read_frame(input_ctx, packet) >= 0) {
+        int index = packet->stream_index;
+        if (index == video_stream_index) {
+            frameFinish = avcodec_send_packet(decoder_ctx, packet);
+            if (frameFinish < 0) {
+                continue;
+            }
+            frameFinish = avcodec_receive_frame(decoder_ctx, frame);
+            if (frameFinish < 0) {
+                continue;
+            }
+            if (frameFinish >= 0) {
+                num++;
+                cout << "iFrame->format" << frame->format << endl;
+                printf("finish decode %d frame\n", num);
+                if (frame->format == AV_HWDEVICE_TYPE_QSV) {
+                    cout << "test" << endl;
+                }
+            }
+        }
+        av_packet_unref(packet);
+        av_freep(packet);
+    }
+
+    /* flush the decoder */
+
+    //lu
+    avformat_close_input(&input_ctx);
+
+    av_frame_free(&frame);
+    av_frame_free(&sw_frame);
+
+    avcodec_free_context(&decoder_ctx);
+
+    av_buffer_unref(&decode.hw_device_ref);
+
     cout << "end" << endl;
     //
     return 0;

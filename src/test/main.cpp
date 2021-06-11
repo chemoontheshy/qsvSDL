@@ -99,7 +99,7 @@ int main(int argc, char* argv[])
 
     //硬解码
     //Available device types: cuda dxva2 qsv d3d11va opencl vulkan
-    const char* m_type = "d3d11va";
+    const char* m_type = "qsv";
     type = av_hwdevice_find_type_by_name(m_type);
     //支持的格式
     if (type == AV_HWDEVICE_TYPE_NONE) {
