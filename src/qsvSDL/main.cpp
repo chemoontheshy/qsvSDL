@@ -12,7 +12,6 @@ extern "C"
 //avutil:工具库（大部分库都需要这个库的支持）
 #include <libavutil/avutil.h>
 #include <libavutil/hwcontext.h>
-#include <libavutil/imgutils.h>
 //SDL2
 #include <SDL.h>
 }
@@ -37,6 +36,47 @@ void initlib()
 	cout << "init ffmpeg lib ok." << "version:" << version<<endl;
 }
 
+static AVFrame* nv12_to_yuv420P(AVFrame *nv12_frame) {
+	int x, y;
+	//0
+	AVFrame* frame = av_frame_alloc();
+
+	//1. must be set
+	frame->format = AV_PIX_FMT_YUV420P;
+	frame->width = nv12_frame->width;
+	frame->height = nv12_frame->height;
+	//2. 32为了dui
+	int ret = av_frame_get_buffer(frame, 64);
+	if (ret < 0) {
+		exit(1);
+	}
+	//3.make sure the frame data is writable;
+	ret = av_frame_make_writable(frame);
+	if (ret < 0) {
+		exit(1);
+	}
+
+	//copy data
+	//y
+	if (nv12_frame->linesize[0] == nv12_frame->width) {
+		memcpy(frame->data[0], frame->data[0], nv12_frame->height * nv12_frame->linesize[0]);
+	}
+	else {
+		for (y = 0; y < frame->height; y++) {
+			for (x = 0; x < frame->width; x++) {
+				frame->data[0][y * frame->linesize[0] + x] = nv12_frame->data[0][y * nv12_frame->linesize[0] + x];
+			}
+		}
+	}
+	//cb and cr
+	for (y = 0; y < frame->height / 2; y++) {
+		for (x = 0; x < frame->width / 2; x++) {
+			frame->data[1][y * frame->linesize[1] + x] = nv12_frame->data[1][y * nv12_frame->linesize[1] + 2 * x];
+			frame->data[2][y * frame->linesize[2] + x] = nv12_frame->data[1][y * nv12_frame->linesize[1] + 2 * x + 1];
+		}
+	}
+	return frame;
+}
 
 int main(int argc, char** argv)
 {
@@ -80,7 +120,7 @@ int main(int argc, char** argv)
 	//输入帧对象
 	AVFrame *pFrame = nullptr;
 	//输出帧对象
-	AVFrame *pFrameRPG = nullptr;
+	AVFrame *pFrameRGB = nullptr;
 	//格式对象
 	AVFormatContext *pFormatCtx = nullptr;
 	//视频解码器
@@ -141,7 +181,6 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
-
 	//获取视频流
 	AVStream* videoStream = pFormatCtx->streams[videoStreamIndex];
 
@@ -187,7 +226,7 @@ int main(int argc, char** argv)
 	//预分配好内存
 	packet = av_packet_alloc();
 	pFrame = av_frame_alloc();
-	pFrameRPG = av_frame_alloc();
+	pFrameRGB = av_frame_alloc();
 
 	//SDL
 	w_width = videoWidght;
@@ -223,10 +262,8 @@ int main(int argc, char** argv)
 		SDL_TEXTUREACCESS_STREAMING,
 		w_width, w_height);
 	//计数
-
-	AVFrame *oFrame = nullptr;
-
 	int num = 0;
+	AVFrame* mFrame =av_frame_alloc();
 	while (av_read_frame(pFormatCtx, packet) >= 0) {
 		int index = packet->stream_index;
 		if (index == videoStreamIndex) {
@@ -242,16 +279,11 @@ int main(int argc, char** argv)
 				num++;
 				cout << pFrame->format<<endl;
 				printf("finish decode %d frame\n", num);
-				ret = av_hwframe_transfer_data(oFrame, pFrame, 0);
-				if (ret < 0) {
-					fprintf(stderr, "Error transferring the data to system memory\n");
-					return 0;
-				}
-				//SDL_UpdateTexture(texture, nullptr, pFrame->data[0], pFrame->linesize[0]);
+				mFrame=nv12_to_yuv420P(pFrame);
 				SDL_UpdateYUVTexture(texture, nullptr,
-					pFrame->data[0],pFrame->linesize[0],
-					pFrame->data[1],pFrame->linesize[1],
-					pFrame->data[2],pFrame->linesize[2]);
+					mFrame->data[0], mFrame->linesize[0],
+					mFrame->data[1], mFrame->linesize[1],
+					mFrame->data[2], mFrame->linesize[2]);
 				//Set size of window
 				rect.x = 0;
 				rect.y = 0;

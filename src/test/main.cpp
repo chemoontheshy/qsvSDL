@@ -99,7 +99,7 @@ int main(int argc, char* argv[])
 
     //硬解码
     //Available device types: cuda dxva2 qsv d3d11va opencl vulkan
-    const char* m_type = "qsv";
+    const char* m_type = "cuda";
     type = av_hwdevice_find_type_by_name(m_type);
     //支持的格式
     if (type == AV_HWDEVICE_TYPE_NONE) {
@@ -128,7 +128,6 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Cannot find input stream information.\n");
         return -1;
     }
-    cout << "test" << endl;
     // 循环出视频流
     ret = av_find_best_stream(input_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &decoder, 0);
     if (ret < 0) {
@@ -136,7 +135,7 @@ int main(int argc, char* argv[])
         return -1;
     }
     video_stream = ret;
-
+    cout << type << endl;
     for (i = 0;; i++) {
         const AVCodecHWConfig* config = avcodec_get_hw_config(decoder, i);
         if (!config) {
@@ -144,6 +143,7 @@ int main(int argc, char* argv[])
                 decoder->name, av_hwdevice_get_type_name(type));
             return -1;
         }
+        cout << "test"<< config->device_type << endl;
         if (config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX &&
             config->device_type == type) {
             hw_pix_fmt = config->pix_fmt;
@@ -193,6 +193,7 @@ int main(int argc, char* argv[])
 
     //SDL格式yuv
     pixformat = SDL_PIXELFORMAT_IYUV;
+    //pixformat = SDL_PIXELFORMAT_NV12;
     //创建纹理
     texture = SDL_CreateTexture(renderer,
         pixformat,
@@ -214,8 +215,8 @@ int main(int argc, char* argv[])
     av_image_fill_arrays(oFrame->data, oFrame->linesize, out_bufffer, AV_PIX_FMT_YUV420P, w_width, w_height, 1);
     //图像转换
     //处理图片数据对象
-    //SwsContext *img_convert_ctx = nullptr;
-    //img_convert_ctx = sws_getContext(w_width, w_height, AV_PIX_FMT_D3D11VA_VLD, w_width, w_height, AV_PIX_FMT_YUV420P, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+    SwsContext *img_convert_ctx = nullptr;
+    img_convert_ctx = sws_getContext(w_width, w_height, AV_PIX_FMT_YUV420P, w_width, w_height, AV_PIX_FMT_YUV420P, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
 
     int num = 0;
     while (av_read_frame(input_ctx, packet) >= 0) {
@@ -234,22 +235,24 @@ int main(int argc, char* argv[])
                 cout << "iFrame->format" << iFrame->format << endl;
                 printf("finish decode %d frame\n", num);
                 if (iFrame->format == hw_pix_fmt) {
+                     
                     /*data from GPU*/
-                    //sws_scale(img_convert_ctx, (const uint8_t *const *)iFrame->data, iFrame->linesize, 0, w_height, oFrame->data, oFrame->linesize);
-                    //SDL_UpdateYUVTexture(texture, nullptr,
-                    //    oFrame->data[0], oFrame->linesize[0],
-                    //    oFrame->data[1], oFrame->linesize[1],
-                    //    oFrame->data[2], oFrame->linesize[2]);
-                    ////Set size of window
-                    //rect.x = 0;
-                    //rect.y = 0;
-                    //rect.w = w_width;
-                    //rect.h = w_height;
-                    ////展示
-                    //SDL_RenderClear(renderer);
-                    //SDL_RenderCopy(renderer, texture, nullptr, &rect);
-                    //SDL_RenderPresent(renderer);
-                    //SDL_Delay(40);
+                    sws_scale(img_convert_ctx, (const uint8_t *const *)iFrame->data, iFrame->linesize, 0, w_height, oFrame->data, oFrame->linesize);
+                    cout << "oFrame->format" << oFrame->format << endl;
+                    SDL_UpdateYUVTexture(texture, nullptr,
+                        oFrame->data[0], oFrame->linesize[0],
+                        oFrame->data[1], oFrame->linesize[1],
+                        oFrame->data[2], oFrame->linesize[2]);
+                    //Set size of window
+                    rect.x = 0;
+                    rect.y = 0;
+                    rect.w = w_width;
+                    rect.h = w_height;
+                    //展示
+                    SDL_RenderClear(renderer);
+                    SDL_RenderCopy(renderer, texture, nullptr, &rect);
+                    SDL_RenderPresent(renderer);
+                    SDL_Delay(40);
                 }
             }
         }
