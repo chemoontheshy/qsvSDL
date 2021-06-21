@@ -1,5 +1,26 @@
 #include "QDecode.h"
 
+//刷新事件
+# define REFRESH_EVENT  (SDL_USEREVENT + 1) 
+
+//线程每40ms刷新一次
+int thread_exit = 0;
+int thread_pause = 0;
+
+int sfp_refresh_thread(void* opaque) {
+	thread_exit = 0;
+
+	while (!thread_exit) {
+		SDL_Event event;
+		event.type = REFRESH_EVENT;
+		SDL_PushEvent(&event);
+		SDL_Delay(20);
+	}
+	thread_exit = 0;
+	return 0;
+}
+
+
 /// <summary>
 /// 构造函数
 /// </summary>
@@ -25,15 +46,28 @@ void QDecode::setUrl(const char* _url)
 	this->url = _url;
 }
 
+
 /// <summary>
 /// 开始播放
 /// </summary>
 void QDecode::play()
 {
+	//在打开码流前指定各种参数比如:探测时间/超时时间/最大延时等
+   //设置缓存大小,1080p可将值调大
+	av_dict_set(&avdic, "buffer_size", "8192000", 0);
+	//以tcp方式打开,如果以udp方式打开将tcp替换为udp
+	av_dict_set(&avdic, "rtsp_transport", "udp", 0);
+	//设置超时断开连接时间,单位微秒,3000000表示3秒
+	av_dict_set(&avdic, "stimeout", "3000000", 0);
+	//设置最大时延,单位微秒,1000000表示1秒
+	av_dict_set(&avdic, "max_delay", "1000000", 0);
+	//自动开启线程数
+	av_dict_set(&avdic, "threads", "auto", 0);
+
 	pFormatCtx = avformat_alloc_context();
 
 	//打开视频流
-	int ret = avformat_open_input(&pFormatCtx, url, nullptr, nullptr);
+	int ret = avformat_open_input(&pFormatCtx, url, nullptr, &avdic);
 	if (ret < 0) {
 		cout << "open url error" << endl;
 		return;
@@ -113,7 +147,11 @@ void QDecode::play()
 		pixformat,
 		SDL_TEXTUREACCESS_STREAMING,
 		videoWidth, videoHeight);
-	
+
+	//创建线程
+	SDL_Thread* video_tid;
+	SDL_Event event;
+	video_tid = SDL_CreateThread(sfp_refresh_thread, NULL, NULL);
 	//计数
 	int num = 0;
 
@@ -121,12 +159,24 @@ void QDecode::play()
 	packet = av_packet_alloc();
 	pFrameNV12 = av_frame_alloc();
 	pFrameYUV = av_frame_alloc();
+	cout << "test" << endl;
+	clock_t start, finish;
+	start = clock();
+	for (;;) {
+		SDL_WaitEvent(&event);
+		if (event.type == REFRESH_EVENT) {
+			while (1) {
+				if (av_read_frame(pFormatCtx, packet) < 0) {
+					finish = clock();
+					//clock()函数返回此时CPU时钟计时单元数
+					cout << endl << "the time cost is:" << float(finish - start) / CLOCKS_PER_SEC << endl;
 
-	while (av_read_frame(pFormatCtx, packet) >= 0) {
-		if (stopped) {
-			break;
-		}
-		if (packet->stream_index == videoStreamIndex) {
+					free();
+					thread_exit = 1;
+				}
+				if (packet->stream_index == videoStreamIndex)
+					break;
+			}
 			frameFinish = avcodec_send_packet(videoCodec, packet);
 			if (frameFinish < 0) {
 				continue;
@@ -152,14 +202,15 @@ void QDecode::play()
 				SDL_RenderClear(renderer);
 				SDL_RenderCopy(renderer, texture, nullptr, &rect);
 				SDL_RenderPresent(renderer);
-				SDL_Delay(40);
 			}
+			av_packet_unref(packet);
+			av_freep(packet);
 		}
-		av_packet_unref(packet);
-		av_freep(packet);
+		else if (event.type == SDL_QUIT) {
+			
+			thread_exit = 1;
+		}
 	}
-	free();
-
 }
 
 /// <summary>
@@ -170,6 +221,7 @@ void QDecode::stop()
 	stopped = true;
 	free();
 }
+
 
 
 /// <summary>
@@ -259,7 +311,9 @@ void QDecode::free()
 	if (texture) {
 		SDL_DestroyTexture(texture);
 	}
+
 	SDL_Quit();
+
 	cout << "decode end." << endl;
 }
 

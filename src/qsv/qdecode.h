@@ -1,5 +1,6 @@
 #ifndef QDECODE_H
 #define QDECODE_H
+#pragma once
 //当前C++兼容C语言
 extern "C"
 {
@@ -25,7 +26,11 @@ extern "C"
 //时间
 #include<time.h>
 
+
+
 using namespace std;
+
+
 /// <summary>
 /// QSV解码+SDL显示
 /// </summary>
@@ -86,6 +91,7 @@ private:
     static AVFrame* nv12_to_yuv420P(AVFrame* nv12_frame);
 
 
+
 private:
     /// <summary>
     /// 停止标志
@@ -131,14 +137,20 @@ private:
     //SDL
     /// <summary>SDL_显示的位置</summary>
     SDL_Rect rect;
+
     /// <summary>SDL显示的格式</summary>
     Uint32 pixformat;
+
     /// <summary>SDL的窗口</summary>
     SDL_Window* win;
+
     /// <summary>渲染器的状态</summary>
     SDL_Renderer* renderer;
+
     /// <summary>纹理</summary>
     SDL_Texture* texture;
+
+    SDL_Event event;
 
 };
 
