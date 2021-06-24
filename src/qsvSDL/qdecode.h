@@ -23,8 +23,12 @@ extern "C"
 #include<iostream>
 //线程锁
 #include<mutex>
+//线程
+#include<thread>
 //时间
 #include<time.h>
+//JRPTLIB
+#include"jrtplib.h"
 
 
 
@@ -53,6 +57,11 @@ public:
     /// 设置地址
     /// </summary>
     void setUrl(const char* url);
+
+    /// <summary>
+    /// 设置地址
+    /// </summary>
+    void setPortbase(int url);
 
     /// <summary>
     /// 开始播放
@@ -89,8 +98,6 @@ private:
     /// <param name="nv12_frame">NV12格式的frame</param>
     /// <returns>YUV420P格式的frame</returns>
     static AVFrame* nv12_to_yuv420P(AVFrame* nv12_frame);
-
-
 
 private:
     /// <summary>

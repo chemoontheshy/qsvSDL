@@ -1,5 +1,7 @@
 #include "QDecode.h"
 
+
+JRTPLIB jrtp;
 //刷新事件
 # define REFRESH_EVENT  (SDL_USEREVENT + 1) 
 
@@ -17,6 +19,12 @@ int sfp_refresh_thread(void* opaque) {
 		SDL_Delay(1000/30);
 	}
 	thread_exit = 0;
+	return 0;
+}
+
+int runRtp(void* opaque)
+{
+	jrtp.getRTPPacket();
 	return 0;
 }
 
@@ -45,62 +53,74 @@ void QDecode::setUrl(const char* _url)
 {
 	this->url = _url;
 }
-
+void QDecode::setPortbase(int portbase)
+{
+	jrtp.setPort(portbase);
+}
 
 /// <summary>
 /// 开始播放
 /// </summary>
 void QDecode::play()
 {
-	
-
 	pFormatCtx = avformat_alloc_context();
-
-	//打开视频流
-	int ret = avformat_open_input(&pFormatCtx, url, nullptr, nullptr);
-	if (ret < 0) {
-		cout << "open url error" << endl;
-		return;
-	}
-
-	//获取流信息
-	ret = avformat_find_stream_info(pFormatCtx, nullptr);
-	if (ret < 0) {
-		cout << "find stream info error." << endl;
-		return;
-	}
-
-	//视频流索引
-	videoStreamIndex = av_find_best_stream(pFormatCtx, AVMEDIA_TYPE_VIDEO, -1, -1, &videoDecoder, 0);
-	if (videoDecoder == nullptr) {
-		cout << "find video stream index error" << endl;
-		return;
-	}
-
-	// 获取视频流
-	AVStream* videoStream = pFormatCtx->streams[videoStreamIndex];
-
 	//获取视频流解码器或者指定解码器
-	videoCodec = avcodec_alloc_context3(nullptr);
-	avcodec_parameters_to_context(videoCodec, videoStream->codecpar);
+	
+	AVCodecParserContext* parser =nullptr;
+	//avcodec_parameters_to_context(videoCodec, avCod);
 
-	//videoDecoder = avcodec_find_decoder(videoCodec->codec_id);
-	videoDecoder = avcodec_find_decoder_by_name("h264_qsv");
+	videoDecoder = avcodec_find_decoder(AV_CODEC_ID_H264);
+	//videoDecoder = avcodec_find_decoder_by_name("h264_qsv");
 	if (videoDecoder == nullptr) {
 		cout << "video decoder not foud." << endl;
 		return;
 	}
 
+	
+
+	videoCodec = avcodec_alloc_context3(videoDecoder);
+
 	//设置加速解码
 	videoCodec->lowres = videoDecoder->max_lowres;
 	videoCodec->flags2 |= AV_CODEC_FLAG2_FAST;
-
+	//初始化
+	parser = av_parser_init(videoDecoder->id);
+	
 	//打开解码器
-	ret = avcodec_open2(videoCodec, videoDecoder, nullptr);
+	int ret = avcodec_open2(videoCodec, videoDecoder, nullptr);
 	if (ret < 0) {
 		cout << "open video codec error" << endl;
 		return;
 	}
+
+	SDL_Thread* rtp;
+	rtp = SDL_CreateThread(runRtp, NULL, NULL);
+	uint8_t* poutbuf;
+	int poutbuf_size;
+	AVPacket *m_packet=av_packet_alloc();
+	while (true) {
+		if (jrtp.getPackets().size() <= 0) {
+			//cout << "not packet" << endl;
+			SDL_Delay(1);
+			continue;
+		}
+		cout << "jrtp.getPackets().front().data" << jrtp.getPackets().front().lenght << endl;
+		ret=av_parser_parse2(parser, videoCodec, &m_packet->data, &m_packet->size,
+			jrtp.getPackets().front().data, jrtp.getPackets().front().lenght,
+			AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
+		if (ret < 0) {
+			cout << "Error while parsing" << endl;
+			break;
+		}
+		jrtp.delPacket();
+		if (m_packet->size>0) {
+			cout << "packet.size：" << m_packet->size << endl;
+		}
+		//cout << "packet.size：" << m_packet->size<< endl;
+		SDL_Delay(20);
+	}
+	return;
+	
 
 	//获取分辨率大小
 	videoWidth = videoCodec->width;

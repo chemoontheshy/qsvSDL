@@ -1,5 +1,5 @@
 #include "qdecode.h"
-#include "jrtplib.h"
+
 
 int main(int argc, char* argv[])
 {
@@ -7,9 +7,9 @@ int main(int argc, char* argv[])
     const char* input = "../../3rd/video/test.mp4";
     qDecode.setUrl(input);
     qDecode.play();*/
-    JRTPLIB jrtp;
-    uint16_t portbase = 4002;
-    jrtp.setPort(portbase);
-    jrtp.getVersion();
+    //JRTPLIB jrtp;
+    QDecode qDecode;
+    qDecode.setPortbase(4002);
+    qDecode.play();
     return 0;
 }

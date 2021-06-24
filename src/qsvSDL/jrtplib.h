@@ -13,8 +13,19 @@
 #include <stdio.h>
 #include <iostream>
 #include <string>
+#include <thread>
+#include <mutex>
 
 using namespace jrtplib;
+
+
+//定义RTP头？
+constexpr auto RTP_HEADLEN = 12;
+
+struct HPacket {
+	uint8_t* data = NULL;
+	int lenght = 0;
+};
 
 class JRTPLIB
 {
@@ -35,22 +46,36 @@ public:
 	//打印版本号
 	void getVersion();
 
+	//获取RTPPacket
+	void getRTPPacket();
+
+	//获取HPacketslist
+	std::list<HPacket> getPackets();
+
+	//获取RTPPacket
+	void delPacket();
+
 private:
 	//打印错误信息
 	void checkerror(int rtperr);
-	//获取Packet
-	void getPacket();
+	//解码RTP H.264视频
+	bool unPackRTPToh264(void* pack_data, int len);
 	//结束RTP会话
 	void free();
+	
 
 private:
 	//RTP会话
 	RTPSession sess;
 	//接受RTP的端口号
 	uint16_t portbase;
-	//
+	//标志
 	int status;
-	
+	//计算
+	int num = 0;
+	uint8_t* outBuf;
+	int outLen;
+	std::list<HPacket> packets;
 };
 
 #endif
