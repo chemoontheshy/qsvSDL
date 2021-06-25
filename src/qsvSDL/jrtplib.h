@@ -21,11 +21,14 @@ using namespace jrtplib;
 
 //定义RTP头？
 constexpr auto RTP_HEADLEN = 12;
+constexpr auto PACKET_LEN = 1024 * 300;
 
 struct HPacket {
-	uint8_t* data = NULL;
-	int lenght = 0;
+	unsigned char* data = NULL;
+	unsigned int lenght = 0;
 };
+
+
 
 class JRTPLIB
 {
@@ -50,7 +53,7 @@ public:
 	void getRTPPacket();
 
 	//获取HPacketslist
-	std::list<HPacket> getPackets();
+	HPacket getPackets();
 
 	//获取RTPPacket
 	void delPacket();
@@ -59,7 +62,7 @@ private:
 	//打印错误信息
 	void checkerror(int rtperr);
 	//解码RTP H.264视频
-	bool unPackRTPToh264(void* pack_data, int len);
+	void unPackRTPToh264(void* pack_data, int len);
 	//结束RTP会话
 	void free();
 	
@@ -73,9 +76,10 @@ private:
 	int status;
 	//计算
 	int num = 0;
-	uint8_t* outBuf;
-	int outLen;
+	unsigned char* packetBuf; //用来存储解码分片包
+	unsigned int packetLen; //记录已经存储的长度
 	std::list<HPacket> packets;
+	HPacket packet;
 };
 
 #endif

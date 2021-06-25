@@ -6,6 +6,9 @@ std::mutex m_mutex;
 /// </summary>
 JRTPLIB::JRTPLIB()
 {
+	packetBuf = NULL;
+	packetBuf = (unsigned char*)malloc(PACKET_LEN * sizeof(unsigned char));
+	packetLen = 0;
 	portbase = 4002;
 	status = -1;
 	
@@ -67,10 +70,7 @@ void JRTPLIB::getRTPPacket()
 					// 在这里进行数据处理
 					//printf("Got packet !\n");
 					// 不再需要这个包了，删除之
-					bool flag = unPackRTPToh264(pack->GetPayloadData(), pack->GetPayloadLength());
-					if (flag) {
-						//std::cout << "packets.size" << packets.size() << std::endl;
-					}
+					unPackRTPToh264(pack->GetPayloadData(), pack->GetPayloadLength());
 					sess.DeletePacket(pack);
 				}
 			} while (sess.GotoNextSourceWithData());
@@ -91,9 +91,9 @@ void JRTPLIB::getRTPPacket()
 }
 
 
-std::list <HPacket> JRTPLIB::getPackets()
+HPacket JRTPLIB::getPackets()
 {
-	return packets;
+	return packet;
 }
 
 void JRTPLIB::delPacket()
@@ -112,74 +112,64 @@ void JRTPLIB::checkerror(int rtperr)
 
 }
 
-bool JRTPLIB::unPackRTPToh264(void* pack_data, int pack_len)
+void JRTPLIB::unPackRTPToh264(void* pack_data, int pack_len)
 {
 	if (pack_len < RTP_HEADLEN) {
-		return false;
+		return;
 	}
-	//视频流
-	unsigned char* src = (unsigned char*)pack_data + RTP_HEADLEN;
-	//获取第一个字节
-	unsigned char head1 = *src;
-	//获取第二个字节
-	unsigned char head2 = *(src+1);
-	//获取FU indicator的类型域
-	unsigned char nal = head1 & 0x1f;
-	//获取FU header的前三位，判断当前是分包的开始，中间，或结束
-	unsigned char flag = head2 & 0xe0;
-	//FU_A nal
-	unsigned char nal_fua = (head1 & 0xe0) | (head2 & 0x1f);
-	//完成一帧标志
-	bool bFinishFrame = false;
-	//std::cout << "begin" << std::endl;
 
-	//int b = (int)nal;
-	//std::cout << "nal  " << b << std::endl;
-	//判断NAL的类型为0x1c=28,说明是FU-A分片
-	if (nal == 0x1c)
+	unsigned  char* src = (unsigned  char*)pack_data + RTP_HEADLEN;
+	unsigned  char  head1 = *src; // 获取第一个字节
+	unsigned  char  head2 = *(src + 1); // 获取第二个字节
+	unsigned  char  nal = head1 & 0x1f; // 获取FU indicator的类型域，
+	unsigned  char  flag = head2 & 0xe0; // 获取FU header的前三位，判断当前是分包的开始、中间或结束
+	unsigned  char  nal_fua = (head1 & 0xe0) | (head2 & 0x1f); // FU_A nal
+	bool  bFinishFrame = false;
+	//std::cout << "nal:" << +nal << std::endl;
+	if (nal == 0x1c) // 判断NAL的类型为0x1c=28，说明是FU-A分片
+	{ // fu-a
+		if (flag == 0x80) // 开始
+		{
+			packetBuf = src - 3;
+			*((int*)packetBuf) = 0x01000000; // zyf:大模式会有问题
+			*((char*)packetBuf + 4) = nal_fua;
+			packetLen = pack_len - RTP_HEADLEN + 3;
+			
+		}
+		else   if (flag == 0x40) // 结束
+		{
+			packetBuf = src + 2;
+			packetLen = pack_len - RTP_HEADLEN - 2;
+		}
+		else // 中间
+		{
+			packetBuf = src + 2;
+			packetLen = pack_len - RTP_HEADLEN - 2;
+		}
+	}
+	else // 单包数据
 	{
-		//开始
-		if (flag == 0x80) {
-			outBuf = src - 3;
-			*((uint8_t*)(outBuf)) = 0x01000000;
-			*((uint8_t*)outBuf + 4) = nal_fua;
-			outLen = pack_len - RTP_HEADLEN + 3;
-		}
-		else if (flag == 0x40) {
-			outBuf = src + 2;
-			outLen = pack_len - RTP_HEADLEN -2;
-		}
-		else {
-			outBuf = src + 2;
-			outLen = pack_len - RTP_HEADLEN - 2;
-		}
+		packetBuf = src - 4;
+		*((int*)packetBuf) = 0x01000000; // zyf:大模式会有问题
+		packetLen = pack_len - RTP_HEADLEN + 4;
 	}
-	//单包数据
-	else {
-		outBuf = src - 4;
-		*((uint8_t*)(outBuf)) = 0x01000000;
-		outLen = pack_len - RTP_HEADLEN + 4;
-	}
-	uint8_t* bufTemp = (uint8_t*)outBuf;
-	//std::cout << "size: " << sizeof(&bufTemp) << std::endl;
-	if (bufTemp[1] & 0x80) {
-		bFinishFrame = true;
-		HPacket packet;
+
+	unsigned  char* bufTmp = (unsigned  char*)pack_data;
+	if (bufTmp[1] & 0x80)
+	{
+		bFinishFrame = true; // rtp mark
+		//std::cout << "test" << std::endl;
 		std::lock_guard<std::mutex> lock(m_mutex);
-		packet.data = outBuf;
-		packet.lenght = outLen;
-		outBuf = NULL;
-		outLen = 0;
-		packets.push_back(packet);
-		//num++;
-		//std::cout << "num: "<<num << std::endl;
-		//std::cout << "packet.lenght:" << packet.data << std::endl;
+		packet.data = packetBuf;
+		packet.lenght = packetLen;
+		//packets.push_back(packet);
 	}
-	else {
+	else
+	{
 		bFinishFrame = false;
 	}
+	Sleep(1);
 
-	return bFinishFrame;
 }
 
 

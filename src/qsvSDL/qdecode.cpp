@@ -63,8 +63,10 @@ void QDecode::setPortbase(int portbase)
 /// </summary>
 void QDecode::play()
 {
+
 	pFormatCtx = avformat_alloc_context();
 	//获取视频流解码器或者指定解码器
+	//设置PPS
 	
 	AVCodecParserContext* parser =nullptr;
 	//avcodec_parameters_to_context(videoCodec, avCod);
@@ -75,16 +77,28 @@ void QDecode::play()
 		cout << "video decoder not foud." << endl;
 		return;
 	}
-
-	
-
+	parser = av_parser_init(videoDecoder->id);
+	if (!parser) {
+		fprintf(stderr, "parser not found\n");
+		return;
+	}
 	videoCodec = avcodec_alloc_context3(videoDecoder);
+	if (!videoCodec) {
+		fprintf(stderr, "Could not allocate video codec context\n");
+		return;
+	}
+
+	/*unsigned char sps_pps[23] = { 0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x0a, 0xf8, 0x0f, 0x00, 0x44, 0xbe, 0x8,
+					  0x00, 0x00, 0x00, 0x01, 0x68, 0xce, 0x38, 0x80 };
+	videoCodec->extradata_size = 23;
+	videoCodec->extradata = (uint8_t*)av_malloc(23 + AV_INPUT_BUFFER_PADDING_SIZE);
+	memcpy(videoCodec->extradata, sps_pps, 23);*/
 
 	//设置加速解码
 	videoCodec->lowres = videoDecoder->max_lowres;
 	videoCodec->flags2 |= AV_CODEC_FLAG2_FAST;
 	//初始化
-	parser = av_parser_init(videoDecoder->id);
+	
 	
 	//打开解码器
 	int ret = avcodec_open2(videoCodec, videoDecoder, nullptr);
@@ -98,38 +112,47 @@ void QDecode::play()
 	uint8_t* poutbuf;
 	int poutbuf_size;
 	AVPacket *m_packet=av_packet_alloc();
+	AVFrame* m_frame = av_frame_alloc();
+	int num = 0;
+	//声明  
 	while (true) {
-		if (jrtp.getPackets().size() <= 0) {
+		if (jrtp.getPackets().lenght <= 0) {
 			//cout << "not packet" << endl;
 			SDL_Delay(1);
 			continue;
 		}
-		cout << "jrtp.getPackets().front().data" << jrtp.getPackets().front().lenght << endl;
 		ret=av_parser_parse2(parser, videoCodec, &m_packet->data, &m_packet->size,
-			jrtp.getPackets().front().data, jrtp.getPackets().front().lenght,
+			reinterpret_cast<uint8_t*>((jrtp.getPackets().data)), jrtp.getPackets().lenght,
 			AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
 		if (ret < 0) {
 			cout << "Error while parsing" << endl;
 			break;
 		}
-		jrtp.delPacket();
 		if (m_packet->size>0) {
-			cout << "packet.size：" << m_packet->size << endl;
+			cout << "test" << endl;
+			frameFinish = avcodec_send_packet(videoCodec, m_packet);
+			if (frameFinish < 0) {
+				continue;
+			}
+			frameFinish = avcodec_receive_frame(videoCodec,m_frame);
+			if (frameFinish < 0) {
+				continue;
+			}
+			if (frameFinish >= 0) {
+				num++;
+				printf("finish decode %d frame\n", num);
+			}
+			
 		}
+		av_packet_unref(m_packet);
+		av_freep(m_packet);
 		//cout << "packet.size：" << m_packet->size<< endl;
-		SDL_Delay(20);
+		
 	}
 	return;
 	
 
-	//获取分辨率大小
-	videoWidth = videoCodec->width;
-	videoHeight = videoCodec->height;
-
-	if (videoWidth == 0 || videoHeight == 0) {
-		cout << "width or height error" << endl;
-		return;
-	}
+	
 
 	//SDL
 	//创建窗口
@@ -163,7 +186,7 @@ void QDecode::play()
 	SDL_Event event;
 	video_tid = SDL_CreateThread(sfp_refresh_thread, NULL, NULL);
 	//计数
-	int num = 0;
+    num = 0;
 
 	//分配内存
 	packet = av_packet_alloc();
