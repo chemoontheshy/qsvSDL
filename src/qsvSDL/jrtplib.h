@@ -24,7 +24,7 @@ constexpr auto RTP_HEADLEN = 12;
 constexpr auto PACKET_LEN = 1024 * 300;
 
 struct HPacket {
-	unsigned char* data = NULL;
+	uint8_t data = NULL;
 	unsigned int lenght = 0;
 };
 
@@ -53,7 +53,7 @@ public:
 	void getRTPPacket();
 
 	//获取HPacketslist
-	HPacket getPackets();
+	std::list<HPacket> getPackets();
 
 	//获取RTPPacket
 	void delPacket();

@@ -3,10 +3,8 @@
   <ItemGroup>
     <ClCompile Include="..\..\src\qsvSDL\main.cpp" />
     <ClCompile Include="..\..\src\qsvSDL\qdecode.cpp" />
-    <ClCompile Include="..\..\src\qsvSDL\jrtplib.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\src\qsvSDL\qdecode.h" />
-    <ClInclude Include="..\..\src\qsvSDL\jrtplib.h" />
   </ItemGroup>
 </Project>

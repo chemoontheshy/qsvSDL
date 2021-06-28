@@ -91,9 +91,9 @@ void JRTPLIB::getRTPPacket()
 }
 
 
-HPacket JRTPLIB::getPackets()
+std::list<HPacket> JRTPLIB::getPackets()
 {
-	return packet;
+	return packets;
 }
 
 void JRTPLIB::delPacket()
@@ -160,9 +160,10 @@ void JRTPLIB::unPackRTPToh264(void* pack_data, int pack_len)
 		bFinishFrame = true; // rtp mark
 		//std::cout << "test" << std::endl;
 		std::lock_guard<std::mutex> lock(m_mutex);
-		packet.data = packetBuf;
+		packet.data =packetBuf ;
+		std::cout << sizeof(packet.data) << std::endl;
 		packet.lenght = packetLen;
-		//packets.push_back(packet);
+		packets.push_back(packet);
 	}
 	else
 	{

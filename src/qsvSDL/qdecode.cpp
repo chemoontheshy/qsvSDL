@@ -1,7 +1,5 @@
 #include "QDecode.h"
 
-
-JRTPLIB jrtp;
 //刷新事件
 # define REFRESH_EVENT  (SDL_USEREVENT + 1) 
 
@@ -22,13 +20,6 @@ int sfp_refresh_thread(void* opaque) {
 	return 0;
 }
 
-int runRtp(void* opaque)
-{
-	jrtp.getRTPPacket();
-	return 0;
-}
-
-
 /// <summary>
 /// 构造函数
 /// </summary>
@@ -36,6 +27,9 @@ QDecode::QDecode()
 {
 	initFFmepg();
 	initSDL();
+	portbase = 4002;
+	status = -1;
+	packetBuf = (unsigned char*)malloc(PACKET_LEN * sizeof(char));
 }
 
 /// <summary>
@@ -55,7 +49,25 @@ void QDecode::setUrl(const char* _url)
 }
 void QDecode::setPortbase(int portbase)
 {
-	jrtp.setPort(portbase);
+	// windows相关，不需要可以删了
+#ifdef RTP_SOCKETTYPE_WINSOCK
+	WSADATA dat;
+	WSAStartup(MAKEWORD(2, 2), &dat);
+#endif // RTP_SOCKETTYPE_WINSOCK
+	//传输参数
+	RTPUDPv4TransmissionParams transparams;
+	//会话参数
+	RTPSessionParams sessparams;
+	//设置时间戳
+	sessparams.SetOwnTimestampUnit(1 / 9000);
+	//是否接受自己的发送的包
+	sessparams.SetAcceptOwnPackets(false);
+	//设置接收端口
+	transparams.SetPortbase(portbase);
+	//创建会话
+	status = sess.Create(sessparams, &transparams);
+	checkerror(status);
+
 }
 
 /// <summary>
@@ -63,18 +75,17 @@ void QDecode::setPortbase(int portbase)
 /// </summary>
 void QDecode::play()
 {
-
+	avformat_network_init();
 	pFormatCtx = avformat_alloc_context();
 	//获取视频流解码器或者指定解码器
 	//设置PPS
-	
 	AVCodecParserContext* parser =nullptr;
-	//avcodec_parameters_to_context(videoCodec, avCod);
+	//avcodec_parameters_to_context(videoCodec, para);
 
 	videoDecoder = avcodec_find_decoder(AV_CODEC_ID_H264);
 	//videoDecoder = avcodec_find_decoder_by_name("h264_qsv");
 	if (videoDecoder == nullptr) {
-		cout << "video decoder not foud." << endl;
+		std::cout << "video decoder not foud." << std::endl;
 		return;
 	}
 	parser = av_parser_init(videoDecoder->id);
@@ -88,27 +99,31 @@ void QDecode::play()
 		return;
 	}
 
-	/*unsigned char sps_pps[23] = { 0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x0a, 0xf8, 0x0f, 0x00, 0x44, 0xbe, 0x8,
-					  0x00, 0x00, 0x00, 0x01, 0x68, 0xce, 0x38, 0x80 };
-	videoCodec->extradata_size = 23;
-	videoCodec->extradata = (uint8_t*)av_malloc(23 + AV_INPUT_BUFFER_PADDING_SIZE);
-	memcpy(videoCodec->extradata, sps_pps, 23);*/
 
 	//设置加速解码
 	videoCodec->lowres = videoDecoder->max_lowres;
 	videoCodec->flags2 |= AV_CODEC_FLAG2_FAST;
 	//初始化
 	
-	
+	unsigned char sps_pps[23] = { 0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x0a, 0xf8, 0x0f, 0x00, 0x44, 0xbe, 0x8,
+				  0x00, 0x00, 0x00, 0x01, 0x68, 0xce, 0x38, 0x80 };
+	videoCodec->extradata_size = 23;
+	videoCodec->extradata = (uint8_t*)av_malloc(23 + AV_INPUT_BUFFER_PADDING_SIZE);
+	if (videoCodec->extradata == NULL) {
+		printf("could not av_malloc the video params extradata!\n");
+		return;
+	}
+	memcpy(videoCodec->extradata, sps_pps, 23);
+
+	videoCodec->width = 1920;
+	videoCodec->height = 1280;
 	//打开解码器
 	int ret = avcodec_open2(videoCodec, videoDecoder, nullptr);
 	if (ret < 0) {
-		cout << "open video codec error" << endl;
+		std::cout << "open video codec error" << std::endl;
 		return;
 	}
 
-	SDL_Thread* rtp;
-	rtp = SDL_CreateThread(runRtp, NULL, NULL);
 	uint8_t* poutbuf;
 	int poutbuf_size;
 	AVPacket *m_packet=av_packet_alloc();
@@ -116,37 +131,69 @@ void QDecode::play()
 	int num = 0;
 	//声明  
 	while (true) {
-		if (jrtp.getPackets().lenght <= 0) {
-			//cout << "not packet" << endl;
-			SDL_Delay(1);
-			continue;
+		sess.BeginDataAccess();
+
+		// 检查收包
+		if (sess.GotoFirstSourceWithData())
+		{
+			do
+			{
+				RTPPacket* pack;
+
+				while ((pack = sess.GetNextPacket()) != NULL)
+				{
+					// 在这里进行数据处理
+					//printf("Got packet !\n");
+					// 不再需要这个包了，删除之
+					auto flag = unPackRTPToh264(pack->GetPayloadData(), pack->GetPayloadLength());
+					//cout << "verison:" << pack-> << endl;
+					sess.DeletePacket(pack);
+					if (!flag) {
+						SDL_Delay(1);
+						continue;
+					}
+					ret = av_parser_parse2(parser, videoCodec, &m_packet->data, &m_packet->size,
+						packetBuf, packetLen,
+						AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
+					if (ret < 0) {
+						cout << "Error while parsing" << endl;
+						break;
+					}
+					packetLen = 0;
+					memset(packetBuf, 0, PACKET_LEN);
+					//cout << "test" << endl;
+					if (m_packet->size > 0) {
+						cout << "m_packet->size" << endl;
+						frameFinish = avcodec_send_packet(videoCodec, m_packet);
+						if (frameFinish < 0) {
+							continue;
+						}
+						frameFinish = avcodec_receive_frame(videoCodec, m_frame);
+						if (frameFinish < 0) {
+							continue;
+						}
+						if (frameFinish >= 0) {
+							num++;
+							printf("finish decode %d frame\n", num);
+						}
+
+					}
+					av_packet_unref(m_packet);
+					av_freep(m_packet);
+				}
+			} while (sess.GotoNextSourceWithData());
 		}
-		ret=av_parser_parse2(parser, videoCodec, &m_packet->data, &m_packet->size,
-			reinterpret_cast<uint8_t*>((jrtp.getPackets().data)), jrtp.getPackets().lenght,
-			AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
-		if (ret < 0) {
-			cout << "Error while parsing" << endl;
-			break;
-		}
-		if (m_packet->size>0) {
-			cout << "test" << endl;
-			frameFinish = avcodec_send_packet(videoCodec, m_packet);
-			if (frameFinish < 0) {
-				continue;
-			}
-			frameFinish = avcodec_receive_frame(videoCodec,m_frame);
-			if (frameFinish < 0) {
-				continue;
-			}
-			if (frameFinish >= 0) {
-				num++;
-				printf("finish decode %d frame\n", num);
-			}
-			
-		}
-		av_packet_unref(m_packet);
-		av_freep(m_packet);
-		//cout << "packet.size：" << m_packet->size<< endl;
+
+		sess.EndDataAccess();
+
+		// 这部分与JThread库相关
+#ifndef RTP_SUPPORT_THREAD
+		status = sess.Poll();
+		checkerror(status);
+#endif // RTP_SUPPORT_THREAD
+
+		// 等待一秒，发包间隔
+		//RTPTime::Wait(RTPTime(1, 0));
 		
 	}
 	return;
@@ -347,6 +394,14 @@ void QDecode::free()
 
 	SDL_Quit();
 
+	// 销毁对话
+	sess.BYEDestroy(RTPTime(10, 0), 0, 0);
+
+	// Windows相关
+#ifdef RTP_SOCKETTYPE_WINSOCK
+	WSACleanup();
+#endif // RTP_SOCKETTYPE_WINSOCK
+
 	cout << "decode end." << endl;
 }
 
@@ -399,4 +454,59 @@ AVFrame* QDecode::nv12_to_yuv420P(AVFrame* nv12_frame)
 		}
 	}
 	return frame;
+}
+
+
+void QDecode::checkerror(int rtperr)
+{
+	if (rtperr < 0)
+	{
+		std::cout << "ERROR: " << RTPGetErrorString(rtperr);
+		exit(-1);
+	}
+
+}
+bool  QDecode::unPackRTPToh264(void* pack_data, int pack_len)
+{
+	bool bFinishFrame = false;
+	if (pack_len < RTP_HEADLEN) {
+		return false;
+	}
+	unsigned char* payload = (unsigned char*)pack_data + RTP_HEADLEN;
+	unsigned char fu_indicator = *payload;
+	unsigned char fu_header = *(payload + 1);
+	unsigned char startBit = fu_header >> 7;
+	unsigned char endBit = (fu_header & 0x40) >> 6;
+	unsigned int payload_len = pack_len - RTP_HEADLEN;
+	uint8_t futype = fu_indicator & 0x1f;
+	uint8_t nal_fua = (fu_indicator & 0xe0) | (fu_header & 0x1f);
+	uint8_t header[4] = { 0x00, 0x00, 0x00, 0x01 };
+	if (futype == 28) {
+		if (endBit == 1) {
+			memcpy(packetBuf + packetLen, payload + 2, payload_len - 2);
+			packetLen += (payload_len - 2);
+			bFinishFrame = true;
+		}
+		else if (startBit == 1) {
+			memcpy(packetBuf, header, sizeof(header));
+			*(packetBuf + sizeof(header)) = nal_fua;
+			memcpy(packetBuf + sizeof(header) + 1, payload + 2, payload_len - 2);
+			packetLen = payload_len - 2 + 4 + 1;
+		}
+		else {
+			if (packetLen > 0) {
+				memcpy(packetBuf + packetLen, payload + 2, payload_len - 2);
+				packetLen += (payload_len - 2);
+			}
+		}
+	}
+	else if(futype >0 && futype <23) {
+		unsigned int pl = payload_len + sizeof(header);
+		memcpy(packetBuf, header, sizeof(header));
+		memcpy(packetBuf + sizeof(header), payload, payload_len);
+		packetLen = pl;
+		bFinishFrame = true;
+	}
+	SDL_Delay(2);
+	return bFinishFrame;
 }
