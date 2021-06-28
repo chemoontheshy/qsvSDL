@@ -19,6 +19,16 @@ extern "C"
 //SDL2
 #include <SDL.h>
 }
+
+#include <jrtplib3/rtpsession.h>
+#include <jrtplib3/rtpudpv4transmitter.h>
+#include <jrtplib3/rtpipv4address.h>
+#include <jrtplib3/rtpsessionparams.h>
+#include <jrtplib3/rtperrors.h>
+#include <jrtplib3/rtplibraryversion.h>
+#include <jrtplib3/rtppacket.h>
+#include <stdlib.h>
+#include <stdio.h>
 //标准库
 #include<iostream>
 //线程锁
@@ -27,12 +37,41 @@ extern "C"
 #include<thread>
 //时间
 #include<time.h>
-//JRPTLIB
-#include"jrtplib.h"
 
+using namespace jrtplib;
 
 
 using namespace std;
+//定义RTP头？
+constexpr auto RTP_HEADLEN = 12;
+constexpr auto PACKET_LEN = 1024 * 1024 * 10;
+
+
+struct HPacket {
+    unsigned char* data = NULL;
+    unsigned int lenght = 0;
+};
+
+/// <summary>
+        /// FU Indicator结构体
+        /// </summary>
+typedef struct fu_indicator
+{
+    unsigned char nal_unit_type : 5;
+    unsigned char nal_ref_idc : 2;
+    unsigned char f_unuse : 1;
+} fu_indicator;
+
+/// <summary>
+/// FU头结构体
+/// </summary>
+typedef struct fu_header
+{
+    unsigned char type : 5;
+    unsigned char r : 1;
+    unsigned char e : 1;
+    unsigned char s : 1;
+} fu_header;
 
 
 /// <summary>
@@ -158,6 +197,31 @@ private:
     SDL_Texture* texture;
 
     SDL_Event event;
+
+private:
+    //打印错误信息
+    void checkerror(int rtperr);
+    //解码RTP H.264视频
+    int unPackRTPToh264(RTPPacket* &rtpPacket);
+
+private:
+    //RTP会话
+    RTPSession sess;
+    //接受RTP的端口号
+    uint16_t portbase;
+    //标志
+    int status;
+    //计算
+    int num = 0;
+    unsigned char* packetBuf; //用来存储解码分片包
+    unsigned int packetLen; //记录已经存储的长度
+    unsigned char* onePacketBuf; //用来存储解码分片包
+    unsigned int onePacketLen; //记录已经存储的长度
+    int64_t m_timeBase =0;
+    uint8_t* BufOut = nullptr;
+    uint8_t** pBufOut = &BufOut;
+    std::size_t OutLen = 0;
+    std::size_t* pOutLen = &OutLen;
 
 };
 
