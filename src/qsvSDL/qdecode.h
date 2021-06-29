@@ -42,9 +42,6 @@ using namespace jrtplib;
 
 
 using namespace std;
-//定义RTP头？
-constexpr auto RTP_HEADLEN = 12;
-constexpr auto PACKET_LEN = 1024 * 1024 * 10;
 
 
 struct HPacket {
@@ -52,15 +49,6 @@ struct HPacket {
     unsigned int lenght = 0;
 };
 
-/// <summary>
-        /// FU Indicator结构体
-        /// </summary>
-typedef struct fu_indicator
-{
-    unsigned char nal_unit_type : 5;
-    unsigned char nal_ref_idc : 2;
-    unsigned char f_unuse : 1;
-} fu_indicator;
 
 /// <summary>
 /// FU头结构体

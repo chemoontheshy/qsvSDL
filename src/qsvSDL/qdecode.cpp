@@ -27,10 +27,6 @@ QDecode::QDecode()
 {
 	initFFmepg();
 	initSDL();
-	portbase = 4002;
-	status = -1;
-	packetBuf = (unsigned char*)malloc(PACKET_LEN * sizeof(char));
-	onePacketBuf = (unsigned char*)malloc(PACKET_LEN * sizeof(char));
 }
 
 /// <summary>
