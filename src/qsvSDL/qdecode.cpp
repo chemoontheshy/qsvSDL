@@ -14,7 +14,7 @@ int sfp_refresh_thread(void* opaque) {
 		SDL_Event event;
 		event.type = REFRESH_EVENT;
 		SDL_PushEvent(&event);
-		SDL_Delay(1000 / 30);
+		SDL_Delay(1000 / 60);
 	}
 	thread_exit = 0;
 	return 0;
@@ -82,9 +82,10 @@ void QDecode::play()
 	//设置PPS
 	AVCodecParserContext* parser = nullptr;
 	AVCodecParameters* para = avcodec_parameters_alloc();
+	
 
-	//videoDecoder = avcodec_find_decoder(AV_CODEC_ID_H264);
-	videoDecoder = avcodec_find_decoder_by_name("h264_cuvid");
+	videoDecoder = avcodec_find_decoder(AV_CODEC_ID_H264);
+	//videoDecoder = avcodec_find_decoder_by_name("h264_qsv");
 	if (videoDecoder == nullptr) {
 		std::cout << "video decoder not foud." << std::endl;
 		return;
@@ -94,14 +95,13 @@ void QDecode::play()
 		fprintf(stderr, "parser not found\n");
 		return;
 	}
-	videoCodec = avcodec_alloc_context3(videoDecoder);
-	
+	videoCodec = avcodec_alloc_context3(nullptr);
 	if (!videoCodec) {
 		fprintf(stderr, "Could not allocate video codec context\n");
 		return;
 	}
-	
 
+	avcodec_parameters_to_context(videoCodec, para);
 	//设置加速解码
 	videoCodec->lowres = videoDecoder->max_lowres;
 	videoCodec->flags2 |= AV_CODEC_FLAG2_FAST;
@@ -118,9 +118,8 @@ void QDecode::play()
 	memcpy(videoCodec->extradata, sps_pps, 23);
 	//打开解码器
 	videoCodec->width = 1920;
-	videoCodec->height = 1280;
-	
-	
+	videoCodec->height = 1088;
+
 	int ret = avcodec_open2(videoCodec, videoDecoder, nullptr);
 	if (ret < 0) {
 		std::cout << "open video codec error" << std::endl;
@@ -132,10 +131,7 @@ void QDecode::play()
 	AVPacket* m_packet = av_packet_alloc();
 	AVFrame* m_frame = av_frame_alloc();
 	int num = 0;
-	int c_num = 0;
-	bool on = false;
-	//声明  
-	while (true) {
+	while (1) {
 		sess.BeginDataAccess();
 
 		// 检查收包
@@ -151,56 +147,39 @@ void QDecode::play()
 					//printf("Got packet !\n");
 					// 不再需要这个包了，删除之
 					m_timeBase = pack->GetTimestamp();
-					auto flag = unPackRTPToh264(pack);
+					Mem mem;
+					mem.data = pack->GetPayloadData();
+					mem.lenght = pack->GetPayloadLength();
+					auto m_mem = unPackRTPToh264(mem);
 					//cout << "verison:" << pack-> << endl;
-					sess.DeletePacket(pack);
-					if (flag==0) {
-						SDL_Delay(1);
-						continue;
-					}
-					else if (flag == 1) {
-						ret = av_parser_parse2(parser, videoCodec, &m_packet->data, &m_packet->size,
-							packetBuf, packetLen,
-							AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
-						packetLen = 0;
-						memset(packetBuf, 0, PACKET_LEN);
-						c_num++;
-						
-					}
-					else if (flag == 2) {
-						ret = av_parser_parse2(parser, videoCodec, &m_packet->data, &m_packet->size,
-							onePacketBuf, onePacketLen,
-							AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
-						onePacketLen = 0;
-						memset(onePacketBuf, 0, PACKET_LEN);
-					}
+					ret = av_parser_parse2(parser, videoCodec, &m_packet->data, &m_packet->size,
+						m_mem.data, m_mem.lenght,
+						AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
 					if (ret < 0) {
 						cout << "Error while parsing" << endl;
 						break;
 					}
-					SDL_Delay(1);
+					sess.DeletePacket(pack);
 					m_packet->pts = m_timeBase;
-					m_packet->dts = 1;
-					//cout << "test" << endl;
 					if (m_packet->size > 0) {
-						//cout << "m_packet->size" << endl;
+
 						frameFinish = avcodec_send_packet(videoCodec, m_packet);
-						cout << "frameFinish: " << frameFinish << endl;
+						SDL_Delay(2);
 						if (frameFinish < 0) {
 							continue;
 						}
-						SDL_Delay(2);
+						//cout << "frameFinish" << frameFinish << endl;
 						frameFinish = avcodec_receive_frame(videoCodec, m_frame);
-						cout << "frameFinish: " << frameFinish << endl;
-						if (frameFinish < 0) {
+						SDL_Delay(7);
+						if (0 > frameFinish) {
 							continue;
 						}
 						if (frameFinish >= 0) {
 							num++;
-							printf("finish decode %d frame\n", num);
+							cout << "finish decode " << num << " frame" << endl;
 						}
-
 					}
+					SDL_Delay(2);
 					av_packet_unref(m_packet);
 					av_freep(m_packet);
 				}
@@ -216,103 +195,7 @@ void QDecode::play()
 #endif // RTP_SUPPORT_THREAD
 
 		// 等待一秒，发包间隔
-		//RTPTime::Wait(RTPTime(1, 0));
-
-	}
-	return;
-
-
-
-
-	//SDL
-	//创建窗口
-	win = SDL_CreateWindow("qsvPlayer",
-		SDL_WINDOWPOS_UNDEFINED,
-		SDL_WINDOWPOS_UNDEFINED,
-		videoWidth,
-		videoHeight,
-		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-
-	if (!win) {
-		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create window by SDL");
-		return;
-	}
-
-	//创建渲染器
-	renderer = SDL_CreateRenderer(win, -1, 0);
-	if (!renderer) {
-		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create Renderer by SDL");
-		return;
-	}
-
-	//创建纹理
-	texture = SDL_CreateTexture(renderer,
-		pixformat,
-		SDL_TEXTUREACCESS_STREAMING,
-		videoWidth, videoHeight);
-
-	//创建线程
-	SDL_Thread* video_tid;
-	SDL_Event event;
-	video_tid = SDL_CreateThread(sfp_refresh_thread, NULL, NULL);
-	//计数
-	num = 0;
-
-	//分配内存
-	packet = av_packet_alloc();
-	pFrameNV12 = av_frame_alloc();
-	pFrameYUV = av_frame_alloc();
-	cout << "test" << endl;
-	clock_t start, finish;
-	start = clock();
-	for (;;) {
-		SDL_WaitEvent(&event);
-		if (event.type == REFRESH_EVENT) {
-			while (1) {
-				if (av_read_frame(pFormatCtx, packet) < 0) {
-					finish = clock();
-					//clock()函数返回此时CPU时钟计时单元数
-					cout << endl << "the time cost is:" << float(finish - start) / CLOCKS_PER_SEC << endl;
-
-					free();
-					thread_exit = 1;
-				}
-				if (packet->stream_index == videoStreamIndex)
-					break;
-			}
-			frameFinish = avcodec_send_packet(videoCodec, packet);
-			if (frameFinish < 0) {
-				continue;
-			}
-			frameFinish = avcodec_receive_frame(videoCodec, pFrameNV12);
-			if (frameFinish < 0) {
-				continue;
-			}
-			if (frameFinish >= 0) {
-				num++;
-				printf("finish decode %d frame\n", num);
-				pFrameYUV = nv12_to_yuv420P(pFrameNV12);
-				SDL_UpdateYUVTexture(texture, nullptr,
-					pFrameYUV->data[0], pFrameYUV->linesize[0],
-					pFrameYUV->data[1], pFrameYUV->linesize[1],
-					pFrameYUV->data[2], pFrameYUV->linesize[2]);
-				//Set size of window
-				rect.x = 0;
-				rect.y = 0;
-				rect.w = videoCodec->width;
-				rect.h = videoCodec->height;
-				//展示
-				SDL_RenderClear(renderer);
-				SDL_RenderCopy(renderer, texture, nullptr, &rect);
-				SDL_RenderPresent(renderer);
-			}
-			av_packet_unref(packet);
-			av_freep(packet);
-		}
-		else if (event.type == SDL_QUIT) {
-
-			thread_exit = 1;
-		}
+		//RTPTime::Wait(RTPTime(1, 0))
 	}
 }
 
@@ -335,8 +218,8 @@ int QDecode::initFFmepg()
 {
 	stopped = false;
 	frameFinish = -1;
-	videoWidth = 0;
-	videoHeight = 0;
+	videoWidth = 1920;
+	videoHeight = 1280;
 	videoStreamIndex = -1;
 	url = nullptr;
 	packet = nullptr;
@@ -362,6 +245,7 @@ int QDecode::initSDL()
 	win = nullptr;
 	renderer = nullptr;
 	texture = nullptr;
+	//rect = nullptr;
 	pixformat = SDL_PIXELFORMAT_IYUV;
 	//SDL初始化
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER)) {
@@ -489,47 +373,41 @@ void QDecode::checkerror(int rtperr)
 	}
 
 }
-int  QDecode::unPackRTPToh264(RTPPacket* &rptRacket)
+Mem  QDecode::unPackRTPToh264(Mem &mem)
 {
-	auto pack_data = rptRacket->GetPayloadData();
-	auto pack_len = rptRacket->GetPayloadLength();
-	int bFinishFrame = 0;
-	auto maker = rptRacket->HasMarker();
-	if (pack_len < RTP_HEADLEN) {
-		return false;
+	static constexpr uint32_t START_CODE = 0x01000000;
+
+	if (mem.lenght < 2) {
+		printf("stream is too short to unpack");
 	}
-	unsigned char* payload = (unsigned char*)pack_data + RTP_HEADLEN;
-	fu_indicator* fu_ind = reinterpret_cast<fu_indicator*>(payload);
-	fu_header* fu_hdr = reinterpret_cast<fu_header*>(fu_ind + 1);
-	uint8_t header[4] = { 0x00, 0x00, 0x00, 0x01 };
-	if (0x1c == fu_ind->nal_unit_type || 0x1d == fu_ind->nal_unit_type) {
-		if (1==fu_hdr->e) {
-			memcpy(packetBuf + packetLen, payload + 2, pack_len - 2);
-			packetLen += (pack_len - 2);
-			bFinishFrame = 1;
-		}
-		else if (1==fu_hdr->s) {
-			unsigned char nal_hdr = (((*payload) & 0xE0) | ((*(payload + 1)) & 0x1F));
+	fu_indicator* fu_ind = reinterpret_cast<fu_indicator*>(mem.data);
+	fu_header* fu_hdr = reinterpret_cast<fu_header*>(mem.data + 1);
+
+	if (0x1C == fu_ind->nal_unit_type) { // 判断NAL的类型为0x1C，说明是FU-A分片
+		if (1 == fu_hdr->s) { // 如果是一帧的开始
+			unsigned char nal_hdr = (((*mem.data) & 0xE0) | ((*(mem.data + 1)) & 0x1F));
 			int offset = -3;
-			memcpy(packetBuf, header, sizeof(header));
-			*(packetBuf + sizeof(header)) = nal_hdr;
-			memcpy(packetBuf + sizeof(header) + 1, payload + 2, pack_len - 2);
-			packetLen = pack_len - 3;
-		}
-		else {
-			if (packetLen > 0) {
-				memcpy(packetBuf + packetLen, payload + 2, pack_len - 2);
-				packetLen += (pack_len - 2);
+			(*reinterpret_cast<uint32_t*>(mem.data + offset)) = START_CODE;
+			if ((6 != nal_hdr) && (7 != nal_hdr) && (8 != nal_hdr)) {
+				offset = -2;
 			}
+			(*(mem.data + 1)) = nal_hdr;
+			mem.data += offset;
+			mem.lenght -= offset;
+			return mem;
 		}
+		// 如果是一帧中间或结束
+		mem.data += 2;
+		mem.lenght -= 2;
+		return mem;
 	}
-	else{
-		unsigned int pl = pack_len + sizeof(header); 
-		memcpy(packetBuf, header, sizeof(header));
-		memcpy(packetBuf + sizeof(header), payload, pack_len);
-		packetLen = pl;
-		bFinishFrame = 2;
+	// 单包数据
+	int offset = -4;
+	(*reinterpret_cast<uint32_t*>(mem.data + offset)) = START_CODE;
+	if ((6 != fu_ind->nal_unit_type) && (7 != fu_ind->nal_unit_type) && (8 != fu_ind->nal_unit_type)) {
+		offset = -3;
 	}
-	SDL_Delay(1);
-	return bFinishFrame;
+	mem.data += offset;
+	mem.lenght -= offset;
+	return mem;
 }

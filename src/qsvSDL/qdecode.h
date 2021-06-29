@@ -73,6 +73,11 @@ typedef struct fu_header
     unsigned char s : 1;
 } fu_header;
 
+typedef struct Mem
+{
+    uint8_t* data;
+    size_t lenght;
+};
 
 /// <summary>
 /// QSV解码+SDL显示
@@ -202,7 +207,7 @@ private:
     //打印错误信息
     void checkerror(int rtperr);
     //解码RTP H.264视频
-    int unPackRTPToh264(RTPPacket* &rtpPacket);
+    Mem unPackRTPToh264(Mem&rtpPacket);
 
 private:
     //RTP会话
