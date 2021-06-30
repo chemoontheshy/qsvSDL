@@ -49,6 +49,15 @@ struct HPacket {
     unsigned int lenght = 0;
 };
 
+/// <summary>
+        /// FU Indicator结构体
+        /// </summary>
+typedef struct fu_indicator
+{
+    unsigned char nal_unit_type : 5;
+    unsigned char nal_ref_idc : 2;
+    unsigned char f_unuse : 1;
+} fu_indicator;
 
 /// <summary>
 /// FU头结构体
@@ -211,10 +220,7 @@ private:
     unsigned char* onePacketBuf; //用来存储解码分片包
     unsigned int onePacketLen; //记录已经存储的长度
     int64_t m_timeBase =0;
-    uint8_t* BufOut = nullptr;
-    uint8_t** pBufOut = &BufOut;
-    std::size_t OutLen = 0;
-    std::size_t* pOutLen = &OutLen;
+    Mem mem;
 
 };
 

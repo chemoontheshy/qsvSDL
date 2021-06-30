@@ -58,7 +58,7 @@ void QDecode::setPortbase(int portbase)
 	//设置时间戳
 	sessparams.SetOwnTimestampUnit(1 / 9000);
 	//是否接受自己的发送的包
-	sessparams.SetAcceptOwnPackets(false);
+	sessparams.SetAcceptOwnPackets(true);
 	//设置接收端口
 	transparams.SetPortbase(portbase);
 	//创建会话
@@ -72,16 +72,12 @@ void QDecode::setPortbase(int portbase)
 /// </summary>
 void QDecode::play()
 {
-	avformat_network_init();
-	pFormatCtx = avformat_alloc_context();
-	//获取视频流解码器或者指定解码器
-	//设置PPS
-	AVCodecParserContext* parser = nullptr;
-	AVCodecParameters* para = avcodec_parameters_alloc();
-	
 
-	videoDecoder = avcodec_find_decoder(AV_CODEC_ID_H264);
-	//videoDecoder = avcodec_find_decoder_by_name("h264_qsv");
+	//获取视频流解码器或
+	AVCodecParserContext* parser = nullptr;
+	//寻找解码器
+	//videoDecoder = avcodec_find_decoder(AV_CODEC_ID_H264);
+	videoDecoder = avcodec_find_decoder_by_name("h264_qsv");
 	if (videoDecoder == nullptr) {
 		std::cout << "video decoder not foud." << std::endl;
 		return;
@@ -91,30 +87,19 @@ void QDecode::play()
 		fprintf(stderr, "parser not found\n");
 		return;
 	}
-	videoCodec = avcodec_alloc_context3(nullptr);
+	//获取视频流解码器或者指定解码器
+	videoCodec = avcodec_alloc_context3(videoDecoder);
 	if (!videoCodec) {
 		fprintf(stderr, "Could not allocate video codec context\n");
 		return;
 	}
-
-	avcodec_parameters_to_context(videoCodec, para);
 	//设置加速解码
 	videoCodec->lowres = videoDecoder->max_lowres;
 	videoCodec->flags2 |= AV_CODEC_FLAG2_FAST;
 	//初始化
-
-	unsigned char sps_pps[23] = { 0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x0a, 0xf8, 0x0f, 0x00, 0x44, 0xbe, 0x8,
-				  0x00, 0x00, 0x00, 0x01, 0x68, 0xce, 0x38, 0x80 };
-	videoCodec->extradata_size = 23;
-	videoCodec->extradata = (uint8_t*)av_malloc(23 + AV_INPUT_BUFFER_PADDING_SIZE);
-	if (videoCodec->extradata == NULL) {
-		printf("could not av_malloc the video params extradata!\n");
-		return;
-	}
-	memcpy(videoCodec->extradata, sps_pps, 23);
 	//打开解码器
-	videoCodec->width = 1920;
-	videoCodec->height = 1088;
+	videoCodec->width = videoWidth;
+	videoCodec->height = videoHeight;
 
 	int ret = avcodec_open2(videoCodec, videoDecoder, nullptr);
 	if (ret < 0) {
@@ -122,10 +107,42 @@ void QDecode::play()
 		return;
 	}
 
-	uint8_t* poutbuf;
-	int poutbuf_size;
 	AVPacket* m_packet = av_packet_alloc();
 	AVFrame* m_frame = av_frame_alloc();
+	pFrameYUV = av_frame_alloc();
+
+	//SDL
+	//创建窗口
+	win = SDL_CreateWindow("qsvPlayer",
+		SDL_WINDOWPOS_UNDEFINED,
+		SDL_WINDOWPOS_UNDEFINED,
+		videoWidth,
+		videoHeight,
+		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+
+	if (!win) {
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create window by SDL");
+		return;
+	}
+
+	//创建渲染器
+	renderer = SDL_CreateRenderer(win, -1, 0);
+	if (!renderer) {
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create Renderer by SDL");
+		return;
+	}
+
+	//创建纹理
+	texture = SDL_CreateTexture(renderer,
+		pixformat,
+		SDL_TEXTUREACCESS_STREAMING,
+		videoWidth, videoHeight);
+
+	//创建线程
+	//SDL_Thread* video_tid;
+	// event;
+	//video_tid = SDL_CreateThread(sfp_refresh_thread, NULL, NULL);
+	//计数
 	int num = 0;
 	while (1) {
 		sess.BeginDataAccess();
@@ -139,45 +156,57 @@ void QDecode::play()
 
 				while ((pack = sess.GetNextPacket()) != NULL)
 				{
-					// 在这里进行数据处理
-					//printf("Got packet !\n");
-					// 不再需要这个包了，删除之
 					m_timeBase = pack->GetTimestamp();
-					Mem mem;
 					mem.data = pack->GetPayloadData();
 					mem.lenght = pack->GetPayloadLength();
-					auto m_mem = unPackRTPToh264(mem);
-					//cout << "verison:" << pack-> << endl;
-					ret = av_parser_parse2(parser, videoCodec, &m_packet->data, &m_packet->size,
-						m_mem.data, m_mem.lenght,
-						AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
-					if (ret < 0) {
-						cout << "Error while parsing" << endl;
-						break;
-					}
-					sess.DeletePacket(pack);
-					m_packet->pts = m_timeBase;
-					if (m_packet->size > 0) {
+					unPackRTPToh264(mem);
+					while (mem.lenght > 0) {
+						ret = av_parser_parse2(parser, videoCodec, &(m_packet->data), &(m_packet->size),
+							mem.data, static_cast<int>(mem.lenght),
+							AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
+						mem.data += ret;
+						mem.lenght -= ret;
+						if (ret < 0) {
+							cout << "Error while parsing" << endl;
+							break;
+						}
+						m_packet->pts = m_timeBase;
+						if (m_packet->size > 0) {
+							frameFinish = avcodec_send_packet(videoCodec, m_packet);
 
-						frameFinish = avcodec_send_packet(videoCodec, m_packet);
-						SDL_Delay(2);
-						if (frameFinish < 0) {
-							continue;
-						}
-						//cout << "frameFinish" << frameFinish << endl;
-						frameFinish = avcodec_receive_frame(videoCodec, m_frame);
-						SDL_Delay(7);
-						if (0 > frameFinish) {
-							continue;
-						}
-						if (frameFinish >= 0) {
-							num++;
-							cout << "finish decode " << num << " frame" << endl;
+							if (frameFinish < 0) {
+								continue;
+							}
+							//cout << "frameFinish" << frameFinish << endl;
+							frameFinish = avcodec_receive_frame(videoCodec, m_frame);
+
+							if (frameFinish < 0) {
+								continue;
+							}
+							if (frameFinish >= 0) {
+								num++;
+								printf("finish decode %d frame\n", num);
+								pFrameYUV = nv12_to_yuv420P(m_frame);
+								SDL_UpdateYUVTexture(texture, nullptr,
+									pFrameYUV->data[0], pFrameYUV->linesize[0],
+									pFrameYUV->data[1], pFrameYUV->linesize[1],
+									pFrameYUV->data[2], pFrameYUV->linesize[2]);
+								//Set size of window
+								rect.x = 0;
+								rect.y = 0;
+								rect.w = pFrameYUV->width;
+								rect.h = pFrameYUV->height;
+								//展示
+								SDL_RenderClear(renderer);
+								SDL_RenderCopy(renderer, texture, nullptr, &rect);
+								SDL_RenderPresent(renderer);
+								SDL_Delay(1);
+							}
 						}
 					}
-					SDL_Delay(2);
 					av_packet_unref(m_packet);
 					av_freep(m_packet);
+					sess.DeletePacket(pack);
 				}
 			} while (sess.GotoNextSourceWithData());
 		}
@@ -215,7 +244,7 @@ int QDecode::initFFmepg()
 	stopped = false;
 	frameFinish = -1;
 	videoWidth = 1920;
-	videoHeight = 1280;
+	videoHeight = 1080;
 	videoStreamIndex = -1;
 	url = nullptr;
 	packet = nullptr;
@@ -326,7 +355,7 @@ AVFrame* QDecode::nv12_to_yuv420P(AVFrame* nv12_frame)
 	frame->format = AV_PIX_FMT_YUV420P;
 	frame->width = nv12_frame->width;
 	frame->height = nv12_frame->height;
-	//2. 32为了dui
+	//2. 32为了
 	int ret = av_frame_get_buffer(frame, 64);
 	if (ret < 0) {
 		exit(1);
@@ -339,14 +368,9 @@ AVFrame* QDecode::nv12_to_yuv420P(AVFrame* nv12_frame)
 
 	//copy data
 	//y
-	if (nv12_frame->linesize[0] == nv12_frame->width) {
-		memcpy(frame->data[0], frame->data[0], nv12_frame->height * nv12_frame->linesize[0]);
-	}
-	else {
-		for (y = 0; y < frame->height; y++) {
-			for (x = 0; x < frame->width; x++) {
-				frame->data[0][y * frame->linesize[0] + x] = nv12_frame->data[0][y * nv12_frame->linesize[0] + x];
-			}
+	for (y = 0; y < frame->height; y++) {
+		for (x = 0; x < frame->width; x++) {
+			frame->data[0][y * frame->linesize[0] + x] = nv12_frame->data[0][y * nv12_frame->linesize[0] + x];
 		}
 	}
 	//cb and cr
@@ -369,7 +393,7 @@ void QDecode::checkerror(int rtperr)
 	}
 
 }
-Mem  QDecode::unPackRTPToh264(Mem &mem)
+Mem  QDecode::unPackRTPToh264(Mem& mem)
 {
 	static constexpr uint32_t START_CODE = 0x01000000;
 
@@ -378,7 +402,7 @@ Mem  QDecode::unPackRTPToh264(Mem &mem)
 	}
 	fu_indicator* fu_ind = reinterpret_cast<fu_indicator*>(mem.data);
 	fu_header* fu_hdr = reinterpret_cast<fu_header*>(mem.data + 1);
-
+	//cout << +(fu_ind->nal_unit_type) << endl;
 	if (0x1C == fu_ind->nal_unit_type) { // 判断NAL的类型为0x1C，说明是FU-A分片
 		if (1 == fu_hdr->s) { // 如果是一帧的开始
 			unsigned char nal_hdr = (((*mem.data) & 0xE0) | ((*(mem.data + 1)) & 0x1F));
@@ -393,6 +417,7 @@ Mem  QDecode::unPackRTPToh264(Mem &mem)
 			return mem;
 		}
 		// 如果是一帧中间或结束
+
 		mem.data += 2;
 		mem.lenght -= 2;
 		return mem;
@@ -406,4 +431,5 @@ Mem  QDecode::unPackRTPToh264(Mem &mem)
 	mem.data += offset;
 	mem.lenght -= offset;
 	return mem;
+
 }
