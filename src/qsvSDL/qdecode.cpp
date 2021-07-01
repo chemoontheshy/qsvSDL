@@ -14,7 +14,7 @@ int sfp_refresh_thread(void* opaque) {
 		SDL_Event event;
 		event.type = REFRESH_EVENT;
 		SDL_PushEvent(&event);
-		SDL_Delay(1000 / 60);
+		SDL_Delay(16);
 	}
 	thread_exit = 0;
 	return 0;
@@ -124,9 +124,11 @@ void QDecode::play()
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create window by SDL");
 		return;
 	}
-
+	//使用支持NV12像素格式的OpenGL渲染器
+	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
 	//创建渲染器
-	renderer = SDL_CreateRenderer(win, -1, 0);
+	//加速：SDL_RENDERER_ACCELERATED
+	renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
 	if (!renderer) {
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create Renderer by SDL");
 		return;
@@ -139,89 +141,98 @@ void QDecode::play()
 		videoWidth, videoHeight);
 
 	//创建线程
-	//SDL_Thread* video_tid;
-	// event;
-	//video_tid = SDL_CreateThread(sfp_refresh_thread, NULL, NULL);
+	SDL_Thread* video_tid;
+	 //event;
+	video_tid = SDL_CreateThread(sfp_refresh_thread, NULL, NULL);
+	rect.x = 0;
+	rect.y = 0;
+	rect.w = videoCodec->width;
+	rect.h = videoCodec->height;
 	//计数
 	int num = 0;
-	while (1) {
-		sess.BeginDataAccess();
+	clock_t start, finish;
+	start = clock();
+	for (;;) {
+		SDL_WaitEvent(&event);
+		if (event.type == REFRESH_EVENT) {
+			sess.BeginDataAccess();
 
-		// 检查收包
-		if (sess.GotoFirstSourceWithData())
-		{
-			do
+			// 检查收包
+			if (sess.GotoFirstSourceWithData())
 			{
-				RTPPacket* pack;
-
-				while ((pack = sess.GetNextPacket()) != NULL)
+				do
 				{
-					m_timeBase = pack->GetTimestamp();
-					mem.data = pack->GetPayloadData();
-					mem.lenght = pack->GetPayloadLength();
-					unPackRTPToh264(mem);
-					while (mem.lenght > 0) {
-						ret = av_parser_parse2(parser, videoCodec, &(m_packet->data), &(m_packet->size),
-							mem.data, static_cast<int>(mem.lenght),
-							AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
-						mem.data += ret;
-						mem.lenght -= ret;
-						if (ret < 0) {
-							cout << "Error while parsing" << endl;
-							break;
-						}
-						m_packet->pts = m_timeBase;
-						if (m_packet->size > 0) {
-							frameFinish = avcodec_send_packet(videoCodec, m_packet);
+					RTPPacket* pack;
 
-							if (frameFinish < 0) {
-								continue;
+					while ((pack = sess.GetNextPacket()) != NULL)
+					{
+						start = clock();
+						//m_timeBase = pack->GetTimestamp();
+						mem.data = pack->GetPayloadData();
+						mem.lenght = pack->GetPayloadLength();
+						unPackRTPToh264(mem);
+						while (mem.lenght > 0) {
+							ret = av_parser_parse2(parser, videoCodec, &(m_packet->data), &(m_packet->size),
+								mem.data, static_cast<int>(mem.lenght),
+								AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
+							mem.data += ret;
+							mem.lenght -= ret;
+							if (ret < 0) {
+								cout << "Error while parsing" << endl;
+								break;
 							}
-							//cout << "frameFinish" << frameFinish << endl;
-							frameFinish = avcodec_receive_frame(videoCodec, m_frame);
+							//m_packet->pts = m_timeBase;
+							if (m_packet->size > 0) {
+								frameFinish = avcodec_send_packet(videoCodec, m_packet);
 
-							if (frameFinish < 0) {
-								continue;
-							}
-							if (frameFinish >= 0) {
-								num++;
-								printf("finish decode %d frame\n", num);
-								pFrameYUV = nv12_to_yuv420P(m_frame);
-								SDL_UpdateYUVTexture(texture, nullptr,
-									pFrameYUV->data[0], pFrameYUV->linesize[0],
-									pFrameYUV->data[1], pFrameYUV->linesize[1],
-									pFrameYUV->data[2], pFrameYUV->linesize[2]);
-								//Set size of window
-								rect.x = 0;
-								rect.y = 0;
-								rect.w = pFrameYUV->width;
-								rect.h = pFrameYUV->height;
-								//展示
-								SDL_RenderClear(renderer);
-								SDL_RenderCopy(renderer, texture, nullptr, &rect);
-								SDL_RenderPresent(renderer);
-								SDL_Delay(1);
+								if (frameFinish < 0) {
+									continue;
+								}
+								frameFinish = avcodec_receive_frame(videoCodec, m_frame);
+
+								if (frameFinish < 0) {
+									continue;
+								}
+								else{
+									num++;
+									printf("finish decode %d frame\n", num);
+									if (num == 10000) {
+										num = 0;
+									}
+									SDL_UpdateTexture(texture, nullptr,
+										m_frame->data[0], m_frame->linesize[0]);
+									SDL_RenderClear(renderer);
+									SDL_RenderCopy(renderer, texture, nullptr, &rect);
+									SDL_RenderPresent(renderer);
+									finish = clock();
+									//clock()函数返回此时CPU时钟计时单元数
+									cout << endl << "the time cost is:" << float(finish - start) / CLOCKS_PER_SEC << endl;
+
+								}
 							}
 						}
+						av_packet_unref(m_packet);
+						av_freep(m_packet);			
 					}
-					av_packet_unref(m_packet);
-					av_freep(m_packet);
 					sess.DeletePacket(pack);
-				}
-			} while (sess.GotoNextSourceWithData());
+				} while (sess.GotoNextSourceWithData());
+			}
+
+			sess.EndDataAccess();
+
+// 这部分与JThread库相关
+//#ifndef rtp_support_thread
+//			status = sess.poll();
+//			checkerror(status);
+//#endif
+// RTP_SUPPORT_THREAD
 		}
+		else if (event.type == SDL_QUIT) {
 
-		sess.EndDataAccess();
-
-		// 这部分与JThread库相关
-#ifndef RTP_SUPPORT_THREAD
-		status = sess.Poll();
-		checkerror(status);
-#endif // RTP_SUPPORT_THREAD
-
-		// 等待一秒，发包间隔
-		//RTPTime::Wait(RTPTime(1, 0))
+			thread_exit = 1;
+		}
 	}
+	
 }
 
 /// <summary>
@@ -244,7 +255,7 @@ int QDecode::initFFmepg()
 	stopped = false;
 	frameFinish = -1;
 	videoWidth = 1920;
-	videoHeight = 1080;
+	videoHeight = 1088;
 	videoStreamIndex = -1;
 	url = nullptr;
 	packet = nullptr;
@@ -271,7 +282,7 @@ int QDecode::initSDL()
 	renderer = nullptr;
 	texture = nullptr;
 	//rect = nullptr;
-	pixformat = SDL_PIXELFORMAT_IYUV;
+	pixformat = SDL_PIXELFORMAT_NV12;
 	//SDL初始化
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER)) {
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not initialize SDL - %s\n", SDL_GetError());
@@ -365,12 +376,16 @@ AVFrame* QDecode::nv12_to_yuv420P(AVFrame* nv12_frame)
 	if (ret < 0) {
 		exit(1);
 	}
-
 	//copy data
 	//y
-	for (y = 0; y < frame->height; y++) {
-		for (x = 0; x < frame->width; x++) {
-			frame->data[0][y * frame->linesize[0] + x] = nv12_frame->data[0][y * nv12_frame->linesize[0] + x];
+	if (nv12_frame->linesize[0] == nv12_frame->width) {
+		memcpy(frame->data[0], nv12_frame->data[0], static_cast<size_t>(nv12_frame->height * nv12_frame->width));
+	}
+	else {
+		for (y = 0; y < frame->height; y++) {
+			for (x = 0; x < frame->width; x++) {
+				frame->data[0][y * frame->linesize[0] + x] = nv12_frame->data[0][y * nv12_frame->linesize[0] + x];
+			}
 		}
 	}
 	//cb and cr
@@ -402,7 +417,6 @@ Mem  QDecode::unPackRTPToh264(Mem& mem)
 	}
 	fu_indicator* fu_ind = reinterpret_cast<fu_indicator*>(mem.data);
 	fu_header* fu_hdr = reinterpret_cast<fu_header*>(mem.data + 1);
-	//cout << +(fu_ind->nal_unit_type) << endl;
 	if (0x1C == fu_ind->nal_unit_type) { // 判断NAL的类型为0x1C，说明是FU-A分片
 		if (1 == fu_hdr->s) { // 如果是一帧的开始
 			unsigned char nal_hdr = (((*mem.data) & 0xE0) | ((*(mem.data + 1)) & 0x1F));

@@ -198,6 +198,7 @@ private:
     /// <summary>纹理</summary>
     SDL_Texture* texture;
 
+    /// <summary>线程实际</summary>
     SDL_Event event;
 
 private:
@@ -214,11 +215,6 @@ private:
     //标志
     int status;
     //计算
-    int num = 0;
-    unsigned char* packetBuf; //用来存储解码分片包
-    unsigned int packetLen; //记录已经存储的长度
-    unsigned char* onePacketBuf; //用来存储解码分片包
-    unsigned int onePacketLen; //记录已经存储的长度
     int64_t m_timeBase =0;
     Mem mem;
 

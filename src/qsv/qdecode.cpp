@@ -339,7 +339,7 @@ AVFrame* QDecode::nv12_to_yuv420P(AVFrame* nv12_frame)
 	//copy data
 	//y
 	if (nv12_frame->linesize[0] == nv12_frame->width) {
-		memcpy(frame->data[0], frame->data[0], nv12_frame->height * nv12_frame->linesize[0]);
+		memcpy(frame->data[0], nv12_frame->data[0], static_cast<int>(nv12_frame->height * nv12_frame->width));
 	}
 	else {
 		for (y = 0; y < frame->height; y++) {
