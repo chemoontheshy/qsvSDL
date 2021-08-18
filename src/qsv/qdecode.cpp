@@ -14,7 +14,7 @@ int sfp_refresh_thread(void* opaque) {
 		SDL_Event event;
 		event.type = REFRESH_EVENT;
 		SDL_PushEvent(&event);
-		SDL_Delay(20);
+		SDL_Delay(40);
 	}
 	thread_exit = 0;
 	return 0;
@@ -124,9 +124,10 @@ void QDecode::play()
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create window by SDL");
 		return;
 	}
-
-	//创建渲染器
-	renderer = SDL_CreateRenderer(win, -1, 0);
+	//使用支持NV12像素格式的OpenGL渲染器
+	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+	//加速：SDL_RENDERER_ACCELERATED
+	renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
 	if (!renderer) {
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create Renderer by SDL");
 		return;
@@ -178,11 +179,8 @@ void QDecode::play()
 			if (frameFinish >= 0) {
 				num++;
 				printf("finish decode %d frame\n", num);
-				pFrameYUV = nv12_to_yuv420P(pFrameNV12);
-				SDL_UpdateYUVTexture(texture, nullptr,
-					pFrameYUV->data[0], pFrameYUV->linesize[0],
-					pFrameYUV->data[1], pFrameYUV->linesize[1],
-					pFrameYUV->data[2], pFrameYUV->linesize[2]);
+				SDL_UpdateTexture(texture, nullptr,
+					pFrameNV12->data[0], pFrameNV12->linesize[0]);
 				//Set size of window
 				rect.x = 0;
 				rect.y = 0;
@@ -249,7 +247,7 @@ int QDecode::initSDL()
 	win = nullptr;
 	renderer = nullptr;
 	texture = nullptr;
-	pixformat = SDL_PIXELFORMAT_IYUV;
+	pixformat = SDL_PIXELFORMAT_NV12;
 	//SDL初始化
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER)) {
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not initialize SDL - %s\n", SDL_GetError());

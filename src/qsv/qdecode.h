@@ -84,7 +84,7 @@ private:
     void free();
 
     /// <summary>
-    /// NV12格式转为YUV420P
+    /// NV12格式转为YUV420P（已弃用，耗时太长）
     /// </summary>
     /// <param name="nv12_frame">NV12格式的frame</param>
     /// <returns>YUV420P格式的frame</returns>
