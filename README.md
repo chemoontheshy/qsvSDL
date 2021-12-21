@@ -22,5 +22,5 @@
   - 需要下载ffmpeg库
   - sdl库
 - qsvdec官方代码，无法直接执行。
-- qsvSDL,采用直接解码UDP码流，所以解码方式不一样，需要用到jrtplib库，实际上最好不要采用这个，可以直接采用socket。
+- qsvSDL,采用直接解码RTP码流，所以解码方式不一样，需要用到jrtplib库，实际上最好不要采用这个，可以直接采用socket。
 - 
