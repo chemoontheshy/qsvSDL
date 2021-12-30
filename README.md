@@ -12,9 +12,10 @@
 
 创建时间：2021/08/13
 
-更新时间：2021/08/18
+更新时间：2021/12/30
 
 ## 说明
+最新说明：由于SDL最新的版本增加了SDL_UpdateNVTexture函数。原来的播放函数已经不对，此库不再更新，请参考https://github.com/chemoontheshy/learn-FFmpeg
 
 本文主要说明，QSV解码+SDL2.0播放
 
